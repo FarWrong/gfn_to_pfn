@@ -1,3 +1,5 @@
+reader
+writer
 *.o
 *.mod*
 *.ko
