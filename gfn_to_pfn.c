@@ -8,7 +8,6 @@
 static struct proc_dir_entry *proc_entry;
 #include <asm/pgtable.h>
 
-// get page info and translate addr
 static long get_user_page_info(struct mm_struct *mm, unsigned long va, unsigned long gpa)
 {
     long ret;
@@ -27,12 +26,12 @@ static long get_user_page_info(struct mm_struct *mm, unsigned long va, unsigned 
         return 0;
     }
     
-    struct page *page = pages[-1];
+    struct page *page = pages[0];
     unsigned long pfn = page_to_pfn(page);
     phys_addr_t phys_base = PFN_PHYS(pfn);
     phys_addr_t exact_phys = phys_base | offset;
     
-    //Note that if a page huge is declared it's probably a huge page. But I don't quite trust a non-huge page detection to detect if it isn't yet
+    // page type detection
     if (PageTransHuge(page)) {
         printk(KERN_INFO "page is part of THP\n");
     } else if (PageHuge(page)) {
@@ -48,6 +47,7 @@ static long get_user_page_info(struct mm_struct *mm, unsigned long va, unsigned 
     return ret;
 }
 
+// process single gfn and get hva
 static void print_gfn_to_hva(unsigned long full_gfn)
 {
     struct kvm *kvm;
@@ -55,13 +55,11 @@ static void print_gfn_to_hva(unsigned long full_gfn)
     gfn_t gfn = (gfn_t)(full_gfn >> 12);
     unsigned long offset = full_gfn & 0xFFF;
     
-    //find first kvm - this needs expanding for variable # of kvms
+    // get first vm
     kvm = list_first_entry_or_null(&vm_list, struct kvm, vm_list);
     if (!kvm) {
         printk(KERN_ERR "No VMs found\n");
         return;
-    } else {
-        printk("Found VM: %d", kvm);
     }
     
     hva = gfn_to_hva(kvm, gfn);
@@ -74,7 +72,7 @@ static void print_gfn_to_hva(unsigned long full_gfn)
     get_user_page_info(kvm->mm, hva, full_gfn);
 }
 
-// proc entry
+// handle write to proc entry. e.g, echo "0x1234" > /proc/gfn_to_pfn
 static ssize_t gfn_write(struct file *file, const char __user *ubuf,
                         size_t count, loff_t *ppos)
 {
@@ -94,7 +92,6 @@ static ssize_t gfn_write(struct file *file, const char __user *ubuf,
     printk(KERN_INFO "WARNING This is using PageTransHuge and PageHuge utilities to detect a hugepage i don't trust them\n");
     
     cur = kbuf;
-    // multi address insertion. delimeter = " "
     while ((token = strsep(&cur, " ")) != NULL) {
         if (*token == '\0')
             continue;
@@ -122,7 +119,6 @@ static int __init gfn_module_init(void)
     return 0;
 }
 
-// cleanup
 static void __exit gfn_module_exit(void)
 {
     proc_remove(proc_entry);
@@ -135,3 +131,4 @@ module_exit(gfn_module_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Edward");
 MODULE_DESCRIPTION("GFN to PFN translation module with multi-address support");
+
